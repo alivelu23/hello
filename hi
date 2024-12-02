@@ -1,1 +1,61 @@
-hi
+import pandas as pd
+import json
+
+def is_valid_json(json_string):
+    """
+    Checks if the given string is valid JSON and contains no additional content.
+    """
+    try:
+        # Attempt to parse the string as JSON
+        parsed = json.loads(json_string)
+        # Ensure no extra content is present (strictly JSON format)
+        if isinstance(parsed, (dict, list)):
+            return True
+        return False
+    except (ValueError, TypeError):
+        return False
+
+def clean_files(csv_file, excel_file, output_csv, output_excel, response_column):
+    """
+    Cleans the CSV and Excel files by removing records with invalid JSON responses.
+    
+    Parameters:
+    - csv_file: Path to the CSV file containing response data.
+    - excel_file: Path to the Excel file containing original data.
+    - output_csv: Path to save the cleaned CSV file.
+    - output_excel: Path to save the cleaned Excel file.
+    - response_column: The name of the column in the CSV file with model responses.
+    """
+    # Load the CSV and Excel files
+    csv_data = pd.read_csv(csv_file)
+    excel_data = pd.read_excel(excel_file)
+    
+    # Ensure both files have the same number of rows
+    if len(csv_data) != len(excel_data):
+        raise ValueError("Mismatch in number of rows between CSV and Excel files.")
+    
+    # Identify indices with invalid JSON in the response column
+    invalid_indices = csv_data[~csv_data[response_column].apply(is_valid_json)].index
+    
+    # Log invalid rows for debugging
+    print(f"Found {len(invalid_indices)} invalid JSON responses at indices: {invalid_indices.tolist()}")
+    
+    # Remove invalid rows from both DataFrames
+    cleaned_csv_data = csv_data.drop(index=invalid_indices)
+    cleaned_excel_data = excel_data.drop(index=invalid_indices)
+    
+    # Save the cleaned data to new files
+    cleaned_csv_data.to_csv(output_csv, index=False)
+    cleaned_excel_data.to_excel(output_excel, index=False)
+    
+    print(f"Cleaned files saved: {output_csv} and {output_excel}")
+
+# File paths
+csv_file = "responses.csv"  # Path to the CSV file with model responses
+excel_file = "original_data.xlsx"  # Path to the Excel file with original data
+output_csv = "cleaned_responses.csv"  # Output CSV file path
+output_excel = "cleaned_original_data.xlsx"  # Output Excel file path
+response_column = "Model Response"  # Column name in CSV containing JSON responses
+
+# Run the cleaning process
+clean_files(csv_file, excel_file, output_csv, output_excel, response_column)
