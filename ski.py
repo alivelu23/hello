@@ -161,3 +161,146 @@ plt.show()
   - Bonferroni correction reduces false positives in multiple comparisons.
 
 Let me know if you need further refinements!
+To find correlations between your variables, we need to handle mixed data types appropriately. Here's how to approach it and which columns to consider:
+
+---
+
+### **Key Columns to Correlate**
+1. **`entailment_score`** (continuous: 0-1)
+2. **`truthfulness`** (ordinal: "Fully True" > "Partially True" > "Not True")
+3. **`hallucination`** (binary: "Yes"/"No")
+4. **`NLI_evidence`** (binary: True/False)
+
+---
+
+### **Correlation Strategies by Data Type**
+| Pairing                          | Data Types                     | Correlation Method               |
+|----------------------------------|--------------------------------|-----------------------------------|
+| Entailment Score vs Truthfulness | Continuous vs Ordinal          | Spearman's Rank Correlation      |
+| Entailment Score vs Hallucination| Continuous vs Binary           | Point-Biserial Correlation       |
+| NLI Evidence vs Truthfulness     | Binary vs Ordinal              | Rank Biserial Correlation        |
+| NLI Evidence vs Hallucination    | Binary vs Binary               | Phi Coefficient (Cramér's V)     |
+
+---
+
+### **Python Code Implementation**
+#### 1. Preprocess Data
+```python
+# Convert ordinal truthfulness to numerical (3=most true, 1=least true)
+truthfulness_map = {
+    'Fully True': 3,
+    'Partially True': 2,
+    'Not True': 1
+}
+df['truthfulness_encoded'] = df['truthfulness'].map(truthfulness_map)
+
+# Convert binary variables to 0/1
+df['hallucination_encoded'] = df['hallucination'].map({'Yes': 1, 'No': 0})
+df['NLI_evidence_encoded'] = df['NLI_evidence'].astype(int)  # True=1, False=0
+```
+
+#### 2. Compute Pairwise Correlations
+```python
+from scipy.stats import spearmanr, pointbiserialr, rank_biserialr, chi2_contingency
+
+# ------------------------------------------
+# 1. Entailment Score vs Truthfulness (Ordinal)
+# ------------------------------------------
+corr_spearman, p_spearman = spearmanr(
+    df['entailment_score'],
+    df['truthfulness_encoded'],
+    nan_policy='omit'
+)
+print(f"Spearman (Entailment vs Truthfulness): {corr_spearman:.3f}, p={p_spearman:.4f}")
+
+# ------------------------------------------
+# 2. Entailment Score vs Hallucination (Binary)
+# ------------------------------------------
+corr_pointbiserial, p_pointbiserial = pointbiserialr(
+    df['hallucination_encoded'],
+    df['entailment_score']
+)
+print(f"Point-Biserial (Entailment vs Hallucination): {corr_pointbiserial:.3f}, p={p_pointbiserial:.4f}")
+
+# ------------------------------------------
+# 3. NLI Evidence vs Truthfulness (Binary vs Ordinal)
+# ------------------------------------------
+corr_rankbiserial = rank_biserialr(
+    x=df['truthfulness_encoded'],
+    y=df['NLI_evidence_encoded']
+)
+print(f"Rank-Biserial (NLI Evidence vs Truthfulness): {corr_rankbiserial:.3f}")
+
+# ------------------------------------------
+# 4. NLI Evidence vs Hallucination (Binary vs Binary)
+# ------------------------------------------
+contingency_table = pd.crosstab(df['NLI_evidence'], df['hallucination'])
+chi2, p_chi, _, _ = chi2_contingency(contingency_table)
+n = contingency_table.sum().sum()
+phi = np.sqrt(chi2 / n)  # Cramér's V for 2x2 tables = Phi coefficient
+print(f"Phi Coefficient (NLI Evidence vs Hallucination): {phi:.3f}, p={p_chi:.4f}")
+```
+
+#### 3. Visualize Relationships
+```python
+# Plot 1: Entailment vs Truthfulness
+plt.figure(figsize=(10, 6))
+sns.boxplot(
+    x='truthfulness',
+    y='entailment_score',
+    data=df,
+    order=['Fully True', 'Partially True', 'Not True']
+)
+plt.title("Entailment Scores by Truthfulness Category")
+
+# Plot 2: Entailment vs Hallucination
+plt.figure(figsize=(10, 6))
+sns.kdeplot(
+    data=df,
+    x='entailment_score',
+    hue='hallucination',
+    common_norm=False
+)
+plt.title("Entailment Score Distribution by Hallucination")
+
+# Plot 3: NLI Evidence vs Hallucination
+plt.figure(figsize=(6, 4))
+sns.heatmap(
+    contingency_table,
+    annot=True,
+    fmt='d',
+    cmap='Blues'
+)
+plt.title("NLI Evidence vs Hallucination")
+plt.show()
+```
+
+---
+
+### **Interpretation Guide**
+1. **Entailment Score vs Truthfulness**:
+   - **Spearman's Correlation**: 
+     - A positive value (e.g., +0.5) indicates higher entailment scores correlate with more truthful summaries.
+     - A significant p-value (p < 0.05) confirms the relationship is statistically meaningful.
+
+2. **Entailment Score vs Hallucination**:
+   - **Point-Biserial Correlation**:
+     - A negative value (e.g., -0.3) suggests higher entailment scores correlate with fewer hallucinations.
+
+3. **NLI Evidence vs Truthfulness**:
+   - **Rank-Biserial Correlation**:
+     - A positive value indicates `NLI_evidence=True` associates with higher truthfulness.
+
+4. **NLI Evidence vs Hallucination**:
+   - **Phi Coefficient**:
+     - A value close to -1 implies `NLI_evidence=False` strongly associates with hallucinations.
+
+---
+
+### **Expected Outcome**
+If your hypothesis holds:
+- High `entailment_score` → "Fully True" summaries (positive Spearman correlation)
+- Low `entailment_score` → "Not True" summaries (negative Point-Biserial with hallucinations)
+- `NLI_evidence=True` → Fewer hallucinations (negative Phi coefficient)
+
+Let me know if you need help interpreting your specific results!
